@@ -42,11 +42,17 @@ def load_checkpoints(config_path, checkpoint_path, cpu=False):
     generator.load_state_dict(ckp_generator)
     ckp_kp_detector = OrderedDict((k.replace('module.',''),v) for k,v in checkpoint['kp_detector'].items())
     kp_detector.load_state_dict(ckp_kp_detector)
-    
+
+    generator.half()
+    kp_detector.half()
+
     if not cpu:
         generator = DataParallelWithCallback(generator)
         kp_detector = DataParallelWithCallback(kp_detector)
 
+    
+    
+    
     generator.eval()
     kp_detector.eval()
     
@@ -63,7 +69,7 @@ def make_animation(source_image, driving_video, generator, kp_detector, relative
         predictions = []
         source = torch.tensor(source_image[np.newaxis].astype(np.float32)).permute(0, 3, 1, 2)
         source = torch.cat([source]* batch_size)
-        source = source.to(device)
+        source = source.to(device).half()
         driving = torch.tensor(np.array(driving_video)[np.newaxis].astype(np.float32)).permute(0, 4, 1, 2, 3)
 
         kp_source = kp_detector(source)
@@ -77,7 +83,7 @@ def make_animation(source_image, driving_video, generator, kp_detector, relative
             kp_driving = kp_detector(driving_frame)
             kp_norm = normalize_kp(kp_source=kp_source, kp_driving=kp_driving,
                                    kp_driving_initial=kp_driving_initial, use_relative_movement=relative,
-                                   use_relative_jacobian=relative, adapt_movement_scale=adapt_movement_scale)
+                                   use_relative_jacobian='relative', adapt_movement_scale=adapt_movement_scale)
             out = generator(source, kp_source=kp_source, kp_driving=kp_norm)
             drivings.extend(np.transpose(driving_frame.data.cpu().numpy(), [0, 2, 3, 1]))
             sources.extend(np.transpose(source.data.cpu().numpy(), [0, 2, 3, 1]))
