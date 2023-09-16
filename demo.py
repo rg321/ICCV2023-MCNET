@@ -73,13 +73,13 @@ def make_animation(source_image, driving_video, generator, kp_detector, relative
         driving = torch.tensor(np.array(driving_video)[np.newaxis].astype(np.float32)).permute(0, 4, 1, 2, 3)
 
         kp_source = kp_detector(source)
-        kp_driving_initial = kp_detector(driving[:, :, 0].to(device))
+        kp_driving_initial = kp_detector(driving[:, :, 0].to(device).half())
 
         pbar = tqdm(total=driving.shape[2])
         frame_idx = 0
         while frame_idx < driving.shape[2]:
             driving_frame = driving[:, :, frame_idx:frame_idx + batch_size].permute(0, 2, 1, 3,4).squeeze(dim=0)
-            driving_frame = driving_frame.to(device)
+            driving_frame = driving_frame.to(device).half()
             kp_driving = kp_detector(driving_frame)
             kp_norm = normalize_kp(kp_source=kp_source, kp_driving=kp_driving,
                                    kp_driving_initial=kp_driving_initial, use_relative_movement=relative,
