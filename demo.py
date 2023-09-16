@@ -28,11 +28,9 @@ def load_checkpoints(config_path, checkpoint_path, cpu=False):
     if opt.kp_num != -1:
         config['model_params']['common_params']['num_kp'] = opt.kp_num
     generator = getattr(GEN, opt.generator)(**config['model_params']['generator_params'],**config['model_params']['common_params'],**{'mbunit':opt.mbunit,'mb_spatial':opt.mb_spatial,'mb_channel':opt.mb_channel})
-    # if not cpu:
     generator.to(device)
     kp_detector = KPDetector(**config['model_params']['kp_detector_params'],
                              **config['model_params']['common_params'])
-    # if not cpu:
     kp_detector.to(device)
     
     if not torch.cuda.is_available():
@@ -55,34 +53,37 @@ def load_checkpoints(config_path, checkpoint_path, cpu=False):
     return generator, kp_detector
 
 
-def make_animation(source_image, driving_video, generator, kp_detector, relative=True, adapt_movement_scale=True, cpu=False):
+def make_animation(source_image, driving_video, generator, kp_detector, relative=True, adapt_movement_scale=True, cpu=False, batch_size = 1):
+
+    
     sources = []
     drivings = []
     
     with torch.no_grad():
         predictions = []
         source = torch.tensor(source_image[np.newaxis].astype(np.float32)).permute(0, 3, 1, 2)
-        # if not cpu:
+        source = torch.cat([source]* batch_size)
         source = source.to(device)
         driving = torch.tensor(np.array(driving_video)[np.newaxis].astype(np.float32)).permute(0, 4, 1, 2, 3)
 
         kp_source = kp_detector(source)
-        # if not cpu:
         kp_driving_initial = kp_detector(driving[:, :, 0].to(device))
-        # else:
-        #     kp_driving_initial = kp_detector(driving[:, :, 0])
-        for frame_idx in tqdm(range(driving.shape[2])):
-            driving_frame = driving[:, :, frame_idx]
-            # if not cpu:
+
+        pbar = tqdm(total=driving.shape[2])
+        frame_idx = 0
+        while frame_idx < driving.shape[2]:
+            driving_frame = driving[:, :, frame_idx:frame_idx + batch_size].permute(0, 2, 1, 3,4).squeeze(dim=0)
             driving_frame = driving_frame.to(device)
             kp_driving = kp_detector(driving_frame)
             kp_norm = normalize_kp(kp_source=kp_source, kp_driving=kp_driving,
                                    kp_driving_initial=kp_driving_initial, use_relative_movement=relative,
                                    use_relative_jacobian=relative, adapt_movement_scale=adapt_movement_scale)
             out = generator(source, kp_source=kp_source, kp_driving=kp_norm)
-            drivings.append(np.transpose(driving_frame.data.cpu().numpy(), [0, 2, 3, 1])[0])
-            sources.append(np.transpose(source.data.cpu().numpy(), [0, 2, 3, 1])[0])
-            predictions.append(np.transpose(out['prediction'].data.cpu().numpy(), [0, 2, 3, 1])[0])
+            drivings.extend(np.transpose(driving_frame.data.cpu().numpy(), [0, 2, 3, 1]))
+            sources.extend(np.transpose(source.data.cpu().numpy(), [0, 2, 3, 1]))
+            predictions.extend(np.transpose(out['prediction'].data.cpu().numpy(), [0, 2, 3, 1]))
+            frame_idx += batch_size
+            pbar.update(batch_size)
     return sources, drivings, predictions
 
 def find_best_frame(source, driving, cpu=False):
@@ -135,6 +136,7 @@ if __name__ == "__main__":
                         help="Set frame to start from.")
  
     parser.add_argument("--cpu", dest="cpu", action="store_true", help="cpu mode.")
+    parser.add_argument("--batch_size",type=int, default=1, help='batch size')
  
 
     parser.set_defaults(relative=False)
@@ -162,12 +164,12 @@ if __name__ == "__main__":
         print ("Best frame: " + str(i))
         driving_forward = driving_video[i:]
         driving_backward = driving_video[:(i+1)][::-1]
-        sources_forward, drivings_forward, predictions_forward = make_animation(source_image, driving_forward, generator, kp_detector, relative=opt.relative, adapt_movement_scale=opt.adapt_scale, cpu=opt.cpu)
-        sources_backward, drivings_backward, predictions_backward = make_animation(source_image, driving_backward, generator, kp_detector, relative=opt.relative, adapt_movement_scale=opt.adapt_scale, cpu=opt.cpu)
+        sources_forward, drivings_forward, predictions_forward = make_animation(source_image, driving_forward, generator, kp_detector, relative=opt.relative, adapt_movement_scale=opt.adapt_scale, cpu=opt.cpu, batch_size=opt.batch_size)
+        sources_backward, drivings_backward, predictions_backward = make_animation(source_image, driving_backward, generator, kp_detector, relative=opt.relative, adapt_movement_scale=opt.adapt_scale, cpu=opt.cpu, batch_size=opt.batch_size)
         predictions = predictions_backward[::-1] + predictions_forward[1:]
         sources = sources_backward[::-1] + sources_forward[1:]
         drivings = drivings_backward[::-1] + drivings_forward[1:]
     else:
-        sources, drivings, predictions = make_animation(source_image, driving_video, generator, kp_detector, relative=opt.relative, adapt_movement_scale=opt.adapt_scale, cpu=opt.cpu)
+        sources, drivings, predictions = make_animation(source_image, driving_video, generator, kp_detector, relative=opt.relative, adapt_movement_scale=opt.adapt_scale, cpu=opt.cpu, batch_size=opt.batch_size)
     imageio.mimsave(opt.result_video, [np.concatenate((img_as_ubyte(s),img_as_ubyte(d),img_as_ubyte(p)),1) for (s,d,p) in zip(sources, drivings, predictions)], fps=fps)
 
