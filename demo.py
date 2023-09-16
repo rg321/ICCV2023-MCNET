@@ -84,6 +84,7 @@ def make_animation(source_image, driving_video, generator, kp_detector, relative
             if batch_size != orig_batch_size:
                 source = torch.cat([orig_source]* batch_size)
                 source = source.to(device).half()
+                kp_source = kp_detector(source)
             driving_frame = driving[:, :, frame_idx:frame_idx + batch_size].permute(0, 2, 1, 3,4).squeeze(dim=0)
             driving_frame = driving_frame.to(device).half()
             kp_driving = kp_detector(driving_frame)
