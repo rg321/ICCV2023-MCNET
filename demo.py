@@ -69,7 +69,7 @@ def make_animation(source_image, driving_video, generator, kp_detector, relative
         orig_batch_size = batch_size
         predictions = []
         source = torch.tensor(source_image[np.newaxis].astype(np.float32)).permute(0, 3, 1, 2)
-        orig_source = source.copy()
+        orig_source = source.clone()
         source = torch.cat([source]* batch_size)
         source = source.to(device).half()
         driving = torch.tensor(np.array(driving_video)[np.newaxis].astype(np.float32)).permute(0, 4, 1, 2, 3)
