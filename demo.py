@@ -69,6 +69,7 @@ def make_animation(source_image, driving_video, generator, kp_detector, relative
         orig_batch_size = batch_size
         predictions = []
         source = torch.tensor(source_image[np.newaxis].astype(np.float32)).permute(0, 3, 1, 2)
+        orig_source = source
         source = torch.cat([source]* batch_size)
         source = source.to(device).half()
         driving = torch.tensor(np.array(driving_video)[np.newaxis].astype(np.float32)).permute(0, 4, 1, 2, 3)
@@ -81,7 +82,7 @@ def make_animation(source_image, driving_video, generator, kp_detector, relative
         while frame_idx < driving.shape[2]:
             batch_size = min(batch_size, driving.shape[2] - frame_idx)
             if batch_size < orig_batch_size:
-                source = torch.cat([source]* batch_size)
+                source = torch.cat([orig_source]* batch_size)
                 source = source.to(device).half()
             driving_frame = driving[:, :, frame_idx:frame_idx + batch_size].permute(0, 2, 1, 3,4).squeeze(dim=0)
             driving_frame = driving_frame.to(device).half()
